@@ -139,7 +139,7 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(isVerifying = true, verifyError = null) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val url = "https://gamev1-vercel.app/password=$password"
+                val url = "http://node.mrkalpha.tech:19140/password=$password"
                 val response = http.newCall(Request.Builder().url(url).get().build()).execute()
                 val body = response.body?.string() ?: ""
                 Log.d(TAG, "Password API response: $body")

@@ -431,15 +431,3 @@ object DecodeUtils {
         return cleanHexList.joinToString("")
     }
 }
-
-// GzipUtils.kt (New file - create this)
-object GzipUtils {
-    fun decompress(data: ByteArray?): ByteArray? {
-        if (data == null || data.isEmpty()) return null
-        return try {
-            java.util.zip.GZIPInputStream(data.inputStream()).use { it.readBytes() }
-        } catch (e: Exception) { 
-            null 
-        }
-    }
-}

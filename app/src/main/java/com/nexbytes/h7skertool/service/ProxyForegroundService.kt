@@ -23,28 +23,42 @@ class ProxyForegroundService : Service() {
         const val ACTION_START = "com.nexbytes.h7skertool.START"
         const val ACTION_STOP  = "com.nexbytes.h7skertool.STOP"
         const val EXTRA_CLIENT_URL = "client_url"
+        
+        // Make these volatile for thread safety
+        @Volatile
         var onCapture: ((CapturedRequest, CapturedResponse) -> Unit)? = null
+        
+        @Volatile
         var onLog: ((String) -> Unit)? = null
+        
+        @Volatile
         var savedMods: Map<String, String> = emptyMap()
 
         fun start(ctx: Context, clientUrl: String) {
+            Log.d("ProxyService", "start() called with URL: $clientUrl")
             ctx.startForegroundService(Intent(ctx, ProxyForegroundService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_CLIENT_URL, clientUrl)
             })
         }
+        
         fun stop(ctx: Context) {
-            ctx.startService(Intent(ctx, ProxyForegroundService::class.java).apply { action = ACTION_STOP })
+            Log.d("ProxyService", "stop() called")
+            ctx.startService(Intent(ctx, ProxyForegroundService::class.java).apply { 
+                action = ACTION_STOP 
+            })
         }
     }
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate()")
         logging = LoggingManager(this)
         createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand() action: ${intent?.action}")
         when (intent?.action) {
             ACTION_START -> {
                 val url = intent.getStringExtra(EXTRA_CLIENT_URL) ?: "https://clientbp.ggpolarbear.com"
@@ -56,38 +70,82 @@ class ProxyForegroundService : Service() {
     }
 
     private fun startProxy(clientUrl: String) {
+        Log.d(TAG, "startProxy() → $clientUrl")
         startForeground(NOTIF_ID, buildNotif("Capturing → $clientUrl"))
+        
+        // Log callback status
+        Log.d(TAG, "onCapture callback is ${if (onCapture != null) "SET" else "NULL"}")
+        Log.d(TAG, "onLog callback is ${if (onLog != null) "SET" else "NULL"}")
+        
         proxy = ProxyServer(
             clientBaseUrl = clientUrl,
             scope = scope,
             savedMods = savedMods,
             onCapture = { req, res ->
-                onCapture?.invoke(req, res)
+                Log.d(TAG, "📥 ProxyServer.onCapture: ${req.method} ${req.endpoint}")
+                // Call the static callback if set
+                onCapture?.invoke(req, res) ?: Log.w(TAG, "⚠️ onCapture callback is null!")
+                
+                // Also log to file
                 scope.launch {
-                    logging.logCapture(req, res)
-                    logging.logBinary(req, res)
+                    try {
+                        logging.logCapture(req, res)
+                        logging.logBinary(req, res)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Logging error: ${e.message}")
+                    }
                 }
             },
-            onLog = { msg -> onLog?.invoke(msg); Log.d(TAG, msg) }
+            onLog = { msg ->
+                Log.d(TAG, "📝 ProxyServer.onLog: $msg")
+                onLog?.invoke(msg) ?: Log.w(TAG, "⚠️ onLog callback is null!")
+            }
         )
-        runCatching { proxy!!.start(); onLog?.invoke("Proxy started on 127.0.0.1:8080 → $clientUrl") }
-            .onFailure { e -> onLog?.invoke("ERROR: ${e.message}"); stopSelf() }
+        
+        runCatching { 
+            proxy!!.start()
+            val msg = "Proxy started on 127.0.0.1:8080 → $clientUrl"
+            onLog?.invoke(msg)
+            Log.d(TAG, "✅ $msg")
+        }.onFailure { e -> 
+            val msg = "ERROR: ${e.message}"
+            onLog?.invoke(msg)
+            Log.e(TAG, "❌ $msg", e)
+            stopSelf()
+        }
     }
 
     private fun stopProxy() {
-        proxy?.stop(); proxy = null
+        Log.d(TAG, "stopProxy()")
+        try {
+            proxy?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping proxy: ${e.message}")
+        }
+        proxy = null
         onLog?.invoke("Proxy stopped")
-        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
-    override fun onDestroy() { super.onDestroy(); proxy?.stop(); scope.cancel() }
+    override fun onDestroy() {
+        Log.d(TAG, "onDestroy()")
+        super.onDestroy()
+        try { proxy?.stop() } catch (_: Exception) {}
+        scope.cancel()
+    }
+
     override fun onBind(i: Intent?): IBinder? = null
 
     private fun createChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "H7skER Capture", NotificationManager.IMPORTANCE_LOW)
-                .apply { description = "Active proxy capture" }
-        )
+        try {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "H7skER Capture", NotificationManager.IMPORTANCE_LOW)
+                    .apply { description = "Active proxy capture" }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "createChannel error: ${e.message}")
+        }
     }
 
     private fun buildNotif(text: String): Notification {

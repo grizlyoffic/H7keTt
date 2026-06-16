@@ -41,7 +41,10 @@ class ProxyServer(
         val bodyBytes: ByteArray? = try {
             val len = reqHeaders["content-length"]?.toLongOrNull() ?: 0L
             if (len > 0) ByteArray(len.toInt()).also { session.inputStream.read(it) } else null
-        } catch (_: Exception) { null }
+        } catch (e: Exception) { 
+            Log.w(TAG, "Error reading body: ${e.message}")
+            null 
+        }
 
         // Apply saved modifications if any
         val finalBody = applyMod(endpoint, bodyBytes)
@@ -53,6 +56,8 @@ class ProxyServer(
             method = method, url = "$clientBaseUrl$path", endpoint = endpoint,
             headers = reqHeaders, body = finalBody, bodyText = bodyText, bodyHex = bodyHex
         )
+        
+        Log.d(TAG, "📥 Captured Request: ${method} ${endpoint} | Body: ${finalBody?.size ?: 0} bytes")
 
         return try {
             val realResp = forwardRequest(method, path, reqHeaders, finalBody)
@@ -69,8 +74,19 @@ class ProxyServer(
                 headers = respHeaders, body = respBytes,
                 bodyText = respText, bodyHex = respHex, durationMs = duration
             )
+            
+            Log.d(TAG, "📤 Captured Response: ${realResp.code} ${endpoint} (${duration}ms)")
             onLog("← ${realResp.code} $endpoint (${duration}ms)")
-            scope.launch { onCapture(capturedReq, capturedRes) }
+            
+            // Launch onCapture in scope
+            scope.launch { 
+                try {
+                    Log.d(TAG, "📡 Invoking onCapture callback for ${capturedReq.id}")
+                    onCapture(capturedReq, capturedRes)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in onCapture callback: ${e.message}", e)
+                }
+            }
 
             val mime = respHeaders["content-type"] ?: "application/octet-stream"
             val response = newFixedLengthResponse(
@@ -84,13 +100,20 @@ class ProxyServer(
             realResp.close()
             response
         } catch (e: IOException) {
+            Log.e(TAG, "✗ Error: $endpoint — ${e.message}", e)
             onLog("✗ Error: $endpoint — ${e.message}")
             val errRes = CapturedResponse(
                 requestId = capturedReq.id, statusCode = 503, statusMessage = "Proxy Error",
                 endpoint = endpoint, headers = emptyMap(), body = null,
                 bodyText = e.message, bodyHex = null, durationMs = -1
             )
-            scope.launch { onCapture(capturedReq, errRes) }
+            scope.launch { 
+                try {
+                    onCapture(capturedReq, errRes)
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Error in error callback: ${ex.message}")
+                }
+            }
             newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
         }
     }

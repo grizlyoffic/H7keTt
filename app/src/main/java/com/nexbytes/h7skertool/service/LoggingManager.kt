@@ -35,7 +35,8 @@ class LoggingManager(private val context: Context) {
             } catch (e: Exception) { Log.e(TAG, "logBinary: ${e.message}") }
         }
 
-    fun getSessionDir(): File = sessionDir
+    // FIX: Function ka naam badal diya taake platform clash na ho
+    fun getSessionDirectory(): File = sessionDir
 
     private fun sanitize(name: String): String {
         val c = name.trimStart('/').replace('/', '_').replace(Regex("[^a-zA-Z0-9_\\-]"), "_")

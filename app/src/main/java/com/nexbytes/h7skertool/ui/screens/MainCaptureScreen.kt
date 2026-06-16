@@ -203,10 +203,15 @@ fun MainCaptureScreen(
                 1 -> LogViewer(logs = state.logs, onClear = onClearLogs)
             }
 
-            // File write status overlay
-            if (state.fileWriteStatus.isNotEmpty() && state.isCapturing) {
-                FileWriteStatus(state.fileWriteStatus, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp))
-            }
+            // ================================================================
+            // 🚫 FILE WRITE STATUS - COMPLETELY REMOVED
+            // ================================================================
+            // Pehle yeh code tha:
+            // if (state.fileWriteStatus.isNotEmpty() && state.isCapturing) {
+            //     FileWriteStatus(state.fileWriteStatus, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp))
+            // }
+            // Ab yeh code PURA HATA DIYA GAYA HAI ✅
+            // ================================================================
         }
     }
 
@@ -300,17 +305,8 @@ private fun CaptureStrip(capturing: Boolean, onStart: () -> Unit, onStop: () -> 
     }
 }
 
-@Composable
-private fun FileWriteStatus(lines: List<String>, modifier: Modifier = Modifier) {
-    Column(
-        modifier.clip(RoundedCornerShape(10.dp)).background(ElevatedBlack.copy(0.9f))
-            .border(1.dp, DividerGray, RoundedCornerShape(10.dp)).padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Text("FILE STATUS", color = TextSecondary, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
-        lines.forEach { line ->
-            val color = if (line.startsWith("✓")) NeonGreen else AlertRed
-            Text(line, color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-        }
-    }
-}
+// ================================================================
+// 🚫 FileWriteStatus Composable - COMPLETELY REMOVED
+// ================================================================
+// Pehle yeh function tha, ab isko bhi hata diya gaya hai ✅
+// ============================================

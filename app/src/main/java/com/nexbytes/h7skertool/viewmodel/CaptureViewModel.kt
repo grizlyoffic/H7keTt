@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import rikka.shizuku.Shizuku
@@ -79,6 +80,9 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
         log(LogLevel.INFO, "Shizuku", if (granted) "Permission granted ✓" else "Permission denied ✗")
     }
 
+    // Track if callbacks are registered
+    private var callbacksRegistered = false
+
     init {
         setupCallbacks()
         startShizukuPoller()
@@ -98,15 +102,35 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun setupCallbacks() {
+        if (callbacksRegistered) return
+        callbacksRegistered = true
+        
         ProxyForegroundService.onCapture = { req, res ->
-            _state.update { s ->
-                s.copy(
-                    requests = listOf(req) + s.requests,
-                    responses = s.responses + (req.id to res)
-                )
+            Log.d(TAG, "📥 onCapture called: ${req.method} ${req.endpoint} (${req.id})")
+            // CRITICAL FIX: Ensure UI updates happen on Main thread
+            viewModelScope.launch(Dispatchers.Main) {
+                try {
+                    _state.update { s ->
+                        val newList = listOf(req) + s.requests
+                        Log.d(TAG, "📊 State update: ${newList.size} requests")
+                        s.copy(
+                            requests = newList,
+                            responses = s.responses + (req.id to res)
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error updating state: ${e.message}", e)
+                }
             }
         }
-        ProxyForegroundService.onLog = { msg -> log(LogLevel.INFO, "Proxy", msg) }
+        
+        ProxyForegroundService.onLog = { msg ->
+            viewModelScope.launch(Dispatchers.Main) {
+                log(LogLevel.INFO, "Proxy", msg)
+            }
+        }
+        
+        Log.d(TAG, "✅ Callbacks registered")
     }
 
     private fun startShizukuPoller() {
@@ -146,14 +170,20 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
 
                 if (body.contains("\"result\":\"0\"") || body.contains("\"result\": \"0\"")) {
                     session.setVerified(true, username = password)
-                    _state.update { it.copy(isVerifying = false, verifyError = null) }
+                    withContext(Dispatchers.Main) {
+                        _state.update { it.copy(isVerifying = false, verifyError = null) }
+                    }
                     log(LogLevel.INFO, "Auth", "Verified successfully ✓")
                 } else {
-                    _state.update { it.copy(isVerifying = false, verifyError = "Invalid password. Access denied.") }
+                    withContext(Dispatchers.Main) {
+                        _state.update { it.copy(isVerifying = false, verifyError = "Invalid password. Access denied.") }
+                    }
                     log(LogLevel.WARNING, "Auth", "Verification failed — response: $body")
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isVerifying = false, verifyError = "Network error: ${e.message}") }
+                withContext(Dispatchers.Main) {
+                    _state.update { it.copy(isVerifying = false, verifyError = "Network error: ${e.message}") }
+                }
                 log(LogLevel.ERROR, "Auth", "Verification error: ${e.message}")
             }
         }
@@ -169,6 +199,11 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startCapture() {
         viewModelScope.launch(Dispatchers.IO) {
+            // Ensure callbacks are registered before starting service
+            withContext(Dispatchers.Main) {
+                setupCallbacks()
+            }
+            
             log(LogLevel.INFO, "Capture", "Writing localconfig.json via Shizuku...")
             val results = ShizukuFileService.writeLocalConfigFiles()
             val statusLines = results.map { if (it.success) "✓ ${it.path}" else "✗ ${it.path}: ${it.error}" }
@@ -177,14 +212,22 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
 
             log(LogLevel.INFO, "Proxy", "Starting proxy → ${_state.value.clientUrl}")
             ProxyForegroundService.savedMods = _state.value.savedMods
-            ProxyForegroundService.start(getApplication(), _state.value.clientUrl)
+            
+            // CRITICAL: Start service on main thread
+            withContext(Dispatchers.Main) {
+                ProxyForegroundService.start(getApplication(), _state.value.clientUrl)
+            }
+            
             _state.update { it.copy(isCapturing = true) }
+            Log.d(TAG, "✅ Capture started")
         }
     }
 
     fun stopCapture() {
         viewModelScope.launch(Dispatchers.IO) {
-            ProxyForegroundService.stop(getApplication())
+            withContext(Dispatchers.Main) {
+                ProxyForegroundService.stop(getApplication())
+            }
             ShizukuFileService.removeLocalConfigFiles()
             _state.update { it.copy(isCapturing = false) }
             log(LogLevel.INFO, "Capture", "Capture stopped. localconfig.json removed.")
@@ -192,12 +235,23 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearCaptures() {
-        _state.update { it.copy(requests = emptyList(), responses = emptyMap()) }
+        _state.update { 
+            it.copy(requests = emptyList(), responses = emptyMap()) 
+        }
+        Log.d(TAG, "🧹 Captures cleared")
     }
 
-    fun setSearch(q: String) { _state.update { it.copy(searchQuery = q) } }
-    fun setEndpointFilter(ep: String?) { _state.update { it.copy(endpointFilter = ep) } }
-    fun dismissError() { _state.update { it.copy(errorMessage = null) } }
+    fun setSearch(q: String) { 
+        _state.update { it.copy(searchQuery = q) } 
+    }
+    
+    fun setEndpointFilter(ep: String?) { 
+        _state.update { it.copy(endpointFilter = ep) } 
+    }
+    
+    fun dismissError() { 
+        _state.update { it.copy(errorMessage = null) } 
+    }
 
     fun saveModification(endpoint: String, modifiedBody: String) {
         val mods = _state.value.savedMods.toMutableMap()
@@ -229,7 +283,12 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun log(level: LogLevel, tag: String, msg: String) {
-        _state.update { s -> s.copy(logs = s.logs + LogEntry(level = level, tag = tag, message = msg)) }
+        _state.update { s -> 
+            val newLogs = s.logs + LogEntry(level = level, tag = tag, message = msg)
+            // Keep only last 500 logs to prevent memory issues
+            val trimmedLogs = if (newLogs.size > 500) newLogs.takeLast(500) else newLogs
+            s.copy(logs = trimmedLogs)
+        }
     }
 
     override fun onCleared() {
@@ -237,5 +296,7 @@ class CaptureViewModel(app: Application) : AndroidViewModel(app) {
         ShizukuManager.removePermissionListener(permissionListener)
         ProxyForegroundService.onCapture = null
         ProxyForegroundService.onLog = null
+        callbacksRegistered = false
+        Log.d(TAG, "ViewModel cleared")
     }
 }

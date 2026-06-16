@@ -4,11 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,10 +39,7 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     
-    // ============================================================
-    // PLUGIN STATES - NAYA ADD KIYA GAYA
-    // ============================================================
-    var selectedPluginTab by remember { mutableIntStateOf(0) }
+    // Plugin states    var selectedPluginTab by remember { mutableIntStateOf(0) }
     val pluginTabs = listOf("🔄 CONVERT", "📦 EXTRACTOR")
     
     // Conversion states
@@ -70,7 +67,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // ============================================================
-        // PLUGINS SECTION - NAYA ADD KIYA GAYA
+        // PLUGINS SECTION
         // ============================================================
         item {
             Card(
@@ -84,7 +81,6 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .padding(12.dp)
                 ) {
-                    // Plugin header
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -545,7 +541,7 @@ private fun PayloadExtractorPluginContent(
                 modifier = Modifier.weight(1f).height(36.dp),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Icon(Icons.Default.Extract, null, modifier = Modifier.size(14.dp), tint = Color.Black)
+                Icon(Icons.Default.ContentCut, null, modifier = Modifier.size(14.dp), tint = Color.Black)
                 Spacer(Modifier.width(4.dp))
                 Text("EXTRACT", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color.Black)
             }

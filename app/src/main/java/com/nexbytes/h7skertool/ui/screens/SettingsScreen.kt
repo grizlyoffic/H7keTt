@@ -39,7 +39,10 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     
-    // Plugin states    var selectedPluginTab by remember { mutableIntStateOf(0) }
+    // ============================================================
+    // PLUGIN STATES - YAHAN DECLARE KIYE GAYE HAIN
+    // ============================================================
+    var selectedPluginTab by remember { mutableIntStateOf(0) }
     val pluginTabs = listOf("🔄 CONVERT", "📦 EXTRACTOR")
     
     // Conversion states
@@ -111,10 +114,11 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     
                     // Plugin Tabs
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = selectedPluginTab,
                         containerColor = ElevatedBlack,
                         contentColor = ElectricBlue,
+                        edgePadding = 0.dp,
                         indicator = { tp ->
                             TabRowDefaults.SecondaryIndicator(
                                 Modifier.tabIndicatorOffset(tp[selectedPluginTab]),
@@ -341,7 +345,7 @@ private fun SettingsActionRow(icon: ImageVector, label: String, color: Color, on
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(0.dp)
     ) {
-        Row(Modifier.fillMaxWidth(), Arrangement.Start, Alignment.CenterVertically,) {
+        Row(Modifier.fillMaxWidth(), Arrangement.Start, Alignment.CenterVertically) {
             Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
             Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Medium)

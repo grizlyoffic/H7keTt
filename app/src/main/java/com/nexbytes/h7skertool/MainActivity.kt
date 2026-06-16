@@ -1,11 +1,11 @@
 package com.nexbytes.h7skertool
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -25,13 +25,19 @@ import com.nexbytes.h7skertool.viewmodel.AppUiState
 import com.nexbytes.h7skertool.viewmodel.CaptureViewModel
 
 class MainActivity : ComponentActivity() {
+    private val TAG = "MainActivity"
     private val vm: CaptureViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate()")
         setContent {
             H7skERTheme {
                 val state by vm.state.collectAsState()
+                // Debug log
+                LaunchedEffect(state.requests.size) {
+                    Log.d(TAG, "📊 State requests count: ${state.requests.size}")
+                }
                 AppRouter(state, vm)
             }
         }
@@ -82,8 +88,11 @@ private fun MainApp(state: AppUiState, vm: CaptureViewModel) {
     val currentBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStack?.destination?.route
 
-    // Requests map for detail lookup
-    val requestMap = remember(state.requests) { state.requests.associateBy { it.id } }
+    // Requests map for detail lookup - recompute when requests change
+    val requestMap = remember(state.requests) { 
+        Log.d("MainApp", "🔄 Rebuilding requestMap with ${state.requests.size} requests")
+        state.requests.associateBy { it.id } 
+    }
 
     Scaffold(
         bottomBar = {
@@ -95,7 +104,8 @@ private fun MainApp(state: AppUiState, vm: CaptureViewModel) {
                             onClick = {
                                 navController.navigate(item.route) {
                                     popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true; restoreState = true
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             },
                             icon = { Icon(item.icon, null) },
@@ -151,7 +161,15 @@ private fun MainApp(state: AppUiState, vm: CaptureViewModel) {
                 arguments = listOf(navArgument("requestId") { type = NavType.StringType })
             ) { backStack ->
                 val reqId = backStack.arguments?.getString("requestId") ?: return@composable
-                val req = requestMap[reqId] ?: return@composable
+                val req = requestMap[reqId]
+                if (req == null) {
+                    Log.w("MainApp", "❌ Request not found: $reqId")
+                    // Show error or go back
+                    LaunchedEffect(Unit) {
+                        navController.popBackStack()
+                    }
+                    return@composable
+                }
                 RequestDetailScreen(
                     request = req,
                     response = state.responses[req.id],
@@ -162,7 +180,10 @@ private fun MainApp(state: AppUiState, vm: CaptureViewModel) {
             composable("change_url") {
                 ClientUrlScreen(
                     currentUrl = state.clientUrl,
-                    onContinue = { url -> vm.setClientUrl(url); navController.popBackStack() }
+                    onContinue = { url -> 
+                        vm.setClientUrl(url)
+                        navController.popBackStack()
+                    }
                 )
             }
         }

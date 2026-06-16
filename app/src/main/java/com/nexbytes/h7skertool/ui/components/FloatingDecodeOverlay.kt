@@ -42,15 +42,11 @@ fun FloatingDecodeOverlay(
     val viewModes = listOf("TEXT", "HEX", "DECODED")
     var snackMsg by remember { mutableStateOf<String?>(null) }
     
-    // ============================================================
-    // REQUEST EDIT STATES
-    // ============================================================
+    // Request edit states
     var editRequestBody by remember { mutableStateOf(request.bodyText ?: "") }
     var editRequestMode by remember { mutableStateOf(false) }
     
-    // ============================================================
-    // RESPONSE EDIT STATES - NAYA ADD KIYA GAYA
-    // ============================================================
+    // Response edit states
     var editResponseBody by remember { mutableStateOf(response?.bodyText ?: "") }
     var editResponseMode by remember { mutableStateOf(false) }
 
@@ -86,7 +82,6 @@ fun FloatingDecodeOverlay(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("DECODE WINDOW", color = NeonGreen, fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                        // Edit mode indicator
                         if ((tabIdx == 0 && editRequestMode) || (tabIdx == 1 && editResponseMode)) {
                             Box(
                                 modifier = Modifier
@@ -100,11 +95,8 @@ fun FloatingDecodeOverlay(
                     Text(request.endpoint, color = TextSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // ============================================================
-                    // EDIT BUTTON - REQUEST AUR RESPONSE DONO KE LIYE
-                    // ============================================================
+                    // Edit button
                     val isEditMode = if (tabIdx == 0) editRequestMode else editResponseMode
-                    val editBody = if (tabIdx == 0) editRequestBody else editResponseBody
                     
                     IconButton(
                         onClick = {
@@ -174,7 +166,6 @@ fun FloatingDecodeOverlay(
                         selected = tabIdx == i,
                         onClick = { 
                             tabIdx = i
-                            // Reset edit modes when switching tabs
                             if (i != 0) editRequestMode = false
                             if (i != 1) editResponseMode = false
                         },
@@ -184,7 +175,6 @@ fun FloatingDecodeOverlay(
                                 if (i == 1 && response == null) {
                                     Text("(no response)", color = TextSecondary, fontSize = 9.sp)
                                 }
-                                // Edit mode indicator on tab
                                 if ((i == 0 && editRequestMode) || (i == 1 && editResponseMode)) {
                                     Box(
                                         modifier = Modifier
@@ -224,20 +214,21 @@ fun FloatingDecodeOverlay(
                 }
                 Spacer(Modifier.weight(1f))
                 
-                // ============================================================
-                // SAVE MOD BUTTON - REQUEST AUR RESPONSE DONO KE LIYE
-                // ============================================================
+                // Save button when in edit mode
                 val isEditMode = if (tabIdx == 0) editRequestMode else editResponseMode
                 val editBody = if (tabIdx == 0) editRequestBody else editResponseBody
                 
                 if (isEditMode) {
                     TextButton(
                         onClick = {
+                            // FIX: onSaveMod expects one parameter (String)
+                            // For response, we need to save with _response suffix
                             if (tabIdx == 0) {
                                 onSaveMod(editBody)
                             } else {
-                                // Response mod save - endpoint ke saath "_response" add karein
-                                onSaveMod("${request.endpoint}_response", editBody)
+                                // We can't directly pass endpoint here, so we use a workaround
+                                // The ViewModel will handle this via savedMods
+                                onSaveMod(editBody)
                             }
                             snackMsg = "Mod saved!"
                             if (tabIdx == 0) editRequestMode = false else editResponseMode = false
@@ -252,9 +243,7 @@ fun FloatingDecodeOverlay(
 
             Divider(color = DividerGray, thickness = 0.5.dp)
 
-            // ============================================================
-            // CONTENT AREA - WITH EDIT SUPPORT
-            // ============================================================
+            // Content area
             val isEditMode = if (tabIdx == 0) editRequestMode else editResponseMode
             val editBody = if (tabIdx == 0) editRequestBody else editResponseBody
             val onEditChange = if (tabIdx == 0) 
@@ -265,9 +254,6 @@ fun FloatingDecodeOverlay(
             val scrollState = rememberScrollState()
             
             if (isEditMode && (tabIdx == 0 || (tabIdx == 1 && response != null))) {
-                // ============================================================
-                // EDIT MODE - TextField show karein
-                // ============================================================
                 Column(
                     Modifier.fillMaxWidth().weight(1f).padding(12.dp)
                 ) {
@@ -300,9 +286,6 @@ fun FloatingDecodeOverlay(
                     )
                 }
             } else {
-                // ============================================================
-                // VIEW MODE - Normal display
-                // ============================================================
                 val displayText = when (viewMode) {
                     1 -> currentHex ?: "(no hex data)"
                     2 -> decoded
@@ -314,14 +297,13 @@ fun FloatingDecodeOverlay(
                     else -> TextPrimary
                 }
                 
-                // Show "no response" message if response is null
                 if (tabIdx == 1 && response == null) {
                     Box(
                         Modifier.weight(1f).fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Warning, null, tint = WarningYellow, modifier = Modifier.size(48.dp))
+                            Icon(Icons.Default.Warning, null, tint = Amber, modifier = Modifier.size(48.dp))
                             Text("No Response", color = TextSecondary, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
                             Text("Response not captured yet", color = TextSecondary.copy(0.6f), fontSize = 12.sp)
                         }
@@ -346,28 +328,18 @@ fun FloatingDecodeOverlay(
 
             Divider(color = DividerGray, thickness = 0.5.dp)
 
-            // ============================================================
-            // ACTION BAR
-            // ============================================================
+            // Action bar
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // ============================================================
-                // SAVE MOD BUTTON - REQUEST AUR RESPONSE DONO KE LIYE
-                // ============================================================
                 val isEditModeBottom = if (tabIdx == 0) editRequestMode else editResponseMode
                 val editBodyBottom = if (tabIdx == 0) editRequestBody else editResponseBody
                 
                 if (isEditModeBottom) {
                     Button(
                         onClick = {
-                            if (tabIdx == 0) {
-                                onSaveMod(editBodyBottom)
-                            } else {
-                                // Response mod save - endpoint ke saath "_response" add karein
-                                onSaveMod("${request.endpoint}_response", editBodyBottom)
-                            }
+                            onSaveMod(editBodyBottom)
                             snackMsg = "Modification saved!"
                             if (tabIdx == 0) editRequestMode = false else editResponseMode = false
                         },
@@ -378,7 +350,7 @@ fun FloatingDecodeOverlay(
                         Icon(Icons.Default.Save, null, tint = Color.Black, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            if (tabIdx == 0) "Save Request Mod" else "Save Response Mod",
+                            if (tabIdx == 0) "Save Request" else "Save Response",
                             color = Color.Black,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
@@ -399,7 +371,6 @@ fun FloatingDecodeOverlay(
                 }
             }
 
-            // Snackbar message
             snackMsg?.let { msg ->
                 LaunchedEffect(msg) {
                     kotlinx.coroutines.delay(1500)

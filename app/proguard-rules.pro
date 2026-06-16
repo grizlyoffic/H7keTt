@@ -1,0 +1,14 @@
+-keep class rikka.shizuku.** { *; }
+-keep class dev.rikka.shizuku.** { *; }
+-keep class fi.iki.elonen.** { *; }
+-keep class org.nanohttpd.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
+-keep class com.nexbytes.h7skertool.model.** { *; }
+-keep interface com.nexbytes.h7skertool.shizuku.** { *; }
+-keepattributes SourceFile,LineNumberTable

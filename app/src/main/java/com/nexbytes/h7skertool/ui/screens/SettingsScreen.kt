@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +39,7 @@ fun SettingsScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
     
     // ============================================================
-    // PLUGIN STATES - YAHAN DECLARE KIYE GAYE HAIN
+    // PLUGIN STATES
     // ============================================================
     var selectedPluginTab by remember { mutableIntStateOf(0) }
     val pluginTabs = listOf("🔄 CONVERT", "📦 EXTRACTOR")
@@ -113,34 +112,35 @@ fun SettingsScreen(
                     
                     Spacer(Modifier.height(8.dp))
                     
-                    // Plugin Tabs
-                    ScrollableTabRow(
-                        selectedTabIndex = selectedPluginTab,
-                        containerColor = ElevatedBlack,
-                        contentColor = ElectricBlue,
-                        edgePadding = 0.dp,
-                        indicator = { tp ->
-                            TabRowDefaults.SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tp[selectedPluginTab]),
-                                color = ElectricBlue,
-                                height = 2.dp
-                            )
-                        },
-                        divider = {}
+                    // Plugin Tabs - Using Row + Tab instead of TabRow to avoid import issues
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ElevatedBlack, RoundedCornerShape(8.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         pluginTabs.forEachIndexed { i, title ->
-                            Tab(
-                                selected = selectedPluginTab == i,
-                                onClick = { selectedPluginTab = i },
-                                text = {
-                                    Text(
-                                        title,
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = if (selectedPluginTab == i) ElectricBlue else TextSecondary
+                            val isSelected = selectedPluginTab == i
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isSelected) ElectricBlue.copy(0.2f) else Color.Transparent
                                     )
-                                }
-                            )
+                                    .clickable { selectedPluginTab = i }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    title,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (isSelected) ElectricBlue else TextSecondary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
                     

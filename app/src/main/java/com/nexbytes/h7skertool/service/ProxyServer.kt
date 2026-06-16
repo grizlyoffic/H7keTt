@@ -44,14 +44,10 @@ class ProxyServer(
             if (len > 0) ByteArray(len.toInt()).also { session.inputStream.read(it) } else null
         } catch (_: Exception) { null }
 
-        // ============================================================
-        // 1. APPLY REQUEST MODIFICATION (Body)
-        // ============================================================
+        // Apply request modification
         val finalBody = applyRequestMod(endpoint, bodyBytes)
         
-        // ============================================================
-        // 2. APPLY HEADER MODIFICATION
-        // ============================================================
+        // Apply header modification
         val modifiedHeaders = applyHeaderMod(endpoint, reqHeaders)
 
         val bodyText = finalBody?.let { runCatching { String(it, Charsets.UTF_8) }.getOrNull() }
@@ -63,15 +59,10 @@ class ProxyServer(
         )
 
         return try {
-            // ============================================================
-            // 3. FORWARD REQUEST WITH MODIFIED HEADERS AND BODY
-            // ============================================================
             val realResp = forwardRequest(method, path, modifiedHeaders, finalBody)
             val duration = System.currentTimeMillis() - start
             
-            // ============================================================
-            // 4. APPLY RESPONSE MODIFICATION
-            // ============================================================
+            // Apply response modification
             val (modifiedRespBytes, modifiedRespText, modifiedRespHex, modifiedRespHeaders) = 
                 applyResponseMod(endpoint, realResp)
 
@@ -87,12 +78,9 @@ class ProxyServer(
                 durationMs = duration
             )
             
-            onLog("← ${realResp.code} $endpoint (${duration}ms) [${if (modifiedRespBytes != realResp.body?.bytes()) "MODIFIED" else "ORIGINAL"}]")
+            onLog("← ${realResp.code} $endpoint (${duration}ms)")
             scope.launch { onCapture(capturedReq, capturedRes) }
 
-            // ============================================================
-            // 5. BUILD RESPONSE WITH MODIFIED BODY
-            // ============================================================
             val mime = modifiedRespHeaders["content-type"] ?: "application/octet-stream"
             val response = newFixedLengthResponse(
                 Response.Status.lookup(realResp.code), 
@@ -101,7 +89,6 @@ class ProxyServer(
                 (modifiedRespBytes?.size ?: 0).toLong()
             )
             
-            // Add modified headers (skip content-length and transfer-encoding)
             modifiedRespHeaders.forEach { (k, v) ->
                 if (!k.equals("content-length", true) && !k.equals("transfer-encoding", true)) {
                     response.addHeader(k, v)
@@ -122,9 +109,6 @@ class ProxyServer(
         }
     }
 
-    // ============================================================
-    // FORWARD REQUEST WITH MODIFIED HEADERS
-    // ============================================================
     private fun forwardRequest(
         method: String, 
         path: String, 
@@ -141,7 +125,6 @@ class ProxyServer(
         val builder = Request.Builder().url(url)
         val host = clientBaseUrl.removePrefix("https://").removePrefix("http://").split("/").first()
         
-        // Add all headers (including modified ones)
         headers.forEach { (k, v) ->
             if (k.lowercase() !in listOf("host","connection","transfer-encoding","content-length","keep-alive")) {
                 runCatching { builder.addHeader(k, v) }
@@ -151,18 +134,11 @@ class ProxyServer(
         return http.newCall(builder.method(method, reqBody).build()).execute()
     }
 
-    // ============================================================
-    // 1. REQUEST BODY MODIFICATION
-    // ============================================================
     private fun applyRequestMod(endpoint: String, body: ByteArray?): ByteArray? {
-        // Check if there's a mod for this endpoint
         val mod = savedMods[endpoint] ?: return body
         return runCatching { mod.toByteArray(Charsets.UTF_8) }.getOrDefault(body)
     }
 
-    // ============================================================
-    // 2. HEADER MODIFICATION
-    // ============================================================
     private fun applyHeaderMod(endpoint: String, headers: MutableMap<String, String>): MutableMap<String, String> {
         val modKey = "${endpoint}_headers"
         val headerMod = savedMods[modKey]
@@ -171,8 +147,6 @@ class ProxyServer(
             return headers
         }
         
-        // Parse header modifications
-        // Format: "Header-Name: Header-Value" per line
         val modifiedHeaders = headers.toMutableMap()
         
         try {
@@ -185,7 +159,6 @@ class ProxyServer(
                     val key = parts[0].trim()
                     val value = parts[1].trim()
                     
-                    // Check if header should be removed (value is empty or "null")
                     if (value.isEmpty() || value.equals("null", ignoreCase = true)) {
                         modifiedHeaders.remove(key)
                         onLog("  🗑️ Removed header: $key")
@@ -202,9 +175,6 @@ class ProxyServer(
         return modifiedHeaders
     }
 
-    // ============================================================
-    // 3. RESPONSE BODY MODIFICATION
-    // ============================================================
     private fun applyResponseMod(
         endpoint: String, 
         response: okhttp3.Response
@@ -212,21 +182,34 @@ class ProxyServer(
         val modKey = "${endpoint}_response"
         val mod = savedMods[modKey]
         
-        // Get original response data
-        val originalBytes = response.body?.bytes() ?: return ResponseModResult(
-            bytes = null,
-            text = null,
-            hex = null,
-            headers = response.headers.toMap()
-        )
+        // Get original response data - FIX: Use response.body?.bytes()
+        val originalBytes = try {
+            response.body?.bytes()
+        } catch (e: Exception) {
+            null
+        }
+        
+        if (originalBytes == null) {
+            // If no body, return empty result
+            val emptyHeaders = mutableMapOf<String, String>()
+            response.headers.forEach { (k, v) -> emptyHeaders[k] = v }
+            return ResponseModResult(
+                bytes = null,
+                text = null,
+                hex = null,
+                headers = emptyHeaders
+            )
+        }
         
         // If no mod, return original
         if (mod.isNullOrEmpty()) {
+            val headers = mutableMapOf<String, String>()
+            response.headers.forEach { (k, v) -> headers[k] = v }
             return ResponseModResult(
                 bytes = originalBytes,
                 text = runCatching { String(originalBytes, Charsets.UTF_8) }.getOrNull(),
                 hex = HexUtils.toHexDump(originalBytes),
-                headers = response.headers.toMap()
+                headers = headers
             )
         }
         
@@ -235,8 +218,8 @@ class ProxyServer(
         val modifiedText = runCatching { String(modifiedBytes, Charsets.UTF_8) }.getOrNull()
         val modifiedHex = HexUtils.toHexDump(modifiedBytes)
         
-        // Update content-length header
-        val modifiedHeaders = response.headers.toMutableMap()
+        val modifiedHeaders = mutableMapOf<String, String>()
+        response.headers.forEach { (k, v) -> modifiedHeaders[k] = v }
         modifiedHeaders["content-length"] = modifiedBytes.size.toString()
         
         onLog("  ✏️ Response modified for $endpoint (${originalBytes.size} → ${modifiedBytes.size} bytes)")
@@ -249,58 +232,16 @@ class ProxyServer(
         )
     }
 
-    // ============================================================
-    // HELPER: Extract endpoint
-    // ============================================================
     private fun extractEndpoint(path: String): String {
         val clean = path.split("?").first().trimStart('/')
         val first = clean.split("/").firstOrNull { it.isNotEmpty() } ?: return path
         return "/$first"
     }
 
-    // ============================================================
-    // DATA CLASS FOR RESPONSE MOD RESULT
-    // ============================================================
     private data class ResponseModResult(
         val bytes: ByteArray?,
         val text: String?,
         val hex: String?,
         val headers: Map<String, String>
-    ) {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-
-            other as ResponseModResult
-
-            if (bytes != null) {
-                if (other.bytes == null) return false
-                if (!bytes.contentEquals(other.bytes)) return false
-            } else if (other.bytes != null) return false
-            if (text != other.text) return false
-            if (hex != other.hex) return false
-            if (headers != other.headers) return false
-
-            return true
-        }
-
-        override fun hashCode(): Int {
-            var result = bytes?.contentHashCode() ?: 0
-            result = 31 * result + (text?.hashCode() ?: 0)
-            result = 31 * result + (hex?.hashCode() ?: 0)
-            result = 31 * result + headers.hashCode()
-            return result
-        }
-    }
-}
-
-// ============================================================
-// EXTENSION: okhttp3.Headers to Map
-// ============================================================
-fun okhttp3.Headers.toMap(): MutableMap<String, String> {
-    val map = mutableMapOf<String, String>()
-    this.forEach { (key, value) ->
-        map[key] = value
-    }
-    return map
+    )
 }
